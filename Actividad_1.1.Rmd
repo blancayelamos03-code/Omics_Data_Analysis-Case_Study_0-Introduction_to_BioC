@@ -1,0 +1,126 @@
+---
+title: "ACTIVIDAD 1_1"
+author: "BLANCA_YÉLAMOS"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Actividad 1.1 - Introducción a las ómicas
+
+## Selección del dataset
+
+Seleccionar un dataset de GEO (Gene Expression Omnibus) de la lista que se presenta en el documento “GEOdatasets_enhanced.xlsx” disponible en los recursos de la actividad.
+
+```{r}
+library(readxl)
+GEOdat <- read_excel("GEODataset_Enhanced.xlsx")
+colnames(GEOdat)
+```
+```{r}
+head(GEOdat)
+```
+
+Las dos primeras columnas hacen referencia a dos tipos de identificadores de GEO, el “Dataset” y la “Serie” que podemos utilizar para recuperar los datos.
+
+```{r}
+GEOdat[27,]
+# Decía que daba problema y por eso lo elimina, para que no haya opción de cogerlo en la selección
+GEOdat <- GEOdat[-27, ]
+```
+
+```{r}
+# Fijamos una semilla para el generador interno de números aleatorios, lo que nos asegura que, mientras no la cambiemos, se repetirá la asignación del estudio.
+set.seed(234567)
+seleccion <- sample(1:nrow(GEOdat), 1)
+GEOSerie <- GEOdat[seleccion, 2]
+GEODataset <- GEOdat[seleccion, 1]
+print(seleccion)
+print(GEODataset)
+print(GEOSerie)
+```
+
+## Descarga de datos
+
+Leeremos los datos desde GEO utilizando el paquete GEOquery.
+
+Podemos hacerlo a partir del “DataSet” o de la “Serie”.
+
+En el primer caso se obtiene una lista con un expressionSet por cada posible DataSet del estudio.
+En el segundo se obtiene un objeto de clase GDS, que contiene campos adicionales con información sobre el experimento.
+Aunque podríamos trabajar únicamente con el objeto de clase GDS, como nuestra finalidad es de aprendizaje, los utilizaremos ambos.
+
+```{r}
+library(GEOquery)
+myGSE <- getGEO(GEOSerie, AnnotGPL = TRUE)
+myGDS <- getGEO(GEODataset, AnnotGPL = TRUE)
+```
+
+### Estructura de los datos y diseño experimental
+
+#### Trabajando con la clase GDS
+
+La clase ‘GDS’ contiene: - información sobre el estudio en forma de metadatos que podemos utilizar para crear una tabla resumen. - Una tabla con información sobre grupos y muestras en cada grupo - La matriz de expresión, codificada de forma no evidente, aunque puede extraerse creando un expressionSet
+
+```{r}
+Meta(myGDS)
+```
+
+```{r}
+Columns(myGDS)
+```
+
+```{r}
+Table(myGDS)
+```
+
+Para disponer de la tabla de grupos, así como de los valores de expresión basta con convertir el objeto myGDS a un objeto de clase ExpressionSet.
+
+```{r}
+myeSet <- GDS2eSet(myGDS)
+library(magrittr)
+pData(myeSet) %>%
+    kableExtra::kable() %>%
+    kableExtra::kable_styling()
+```
+
+
+#### Trabajando con la clase GSE
+
+Trabajando con el resultado de descargar con el identificador GSE
+
+Antes de empezar a trabajar con los datos estos se extraen de la lista que los contiene (en forma de objeto de clase ExpressionSet).
+
+El objeto contiene la matriz de expresión, las posibles covariables e información del estudio almacenada de forma poco intuitiva, puesto que se repite para cada muestra.
+
+La matriz de expresión y la información fenotípica pueden extraerse con las funciones exprs y pData respectivamente.
+
+```{r}
+eSet <- myGSE[[1]]
+class(eSet)
+```
+
+En este caso el objeto no dispone de un tabla como la del caso anterior, por lo que debemos elaborarla a partir de una inspección detallada del objeto pData(eSet). Como puede verse parece que las únicas columnas con información sobre los grupos experimentales parecen ser la 2 y la 8:
+
+```{r}
+pData(eSet)[, c(1, 8)]
+```
+
+La columna “source_name_ch1” sugiere que hay dos grupos “treated/untreated”.
+
+La columna “title” no es muy explicativa y sugiere la existencia de otra clasificación superpuesta PC3/final.
+
+De momento podemos crear una etiqueta para cada muestra que contenga ambas informaciones:
+
+```{r}
+shortName <- paste(substr(pData(eSet)$title, 3, 5), c(rep("untr", 4), rep("treat",
+    4)), substr(pData(eSet)$title, 1, 1), substr(rownames(pData(eSet)), 6, 8), sep = "_")
+colores <- c(rep("red", 4), rep("blue", 4))
+pData(eSet) <- data.frame(shortName, colores, pData(eSet)[, c(1, 8)])
+colnames(exprs(eSet)) <- rownames(pData(eSet)) <- pData(eSet)$shortName
+exprs(eSet)[1:5, 1:5] %>%
+    kableExtra::kable() %>%
+    kableExtra::kable_styling()
+```
